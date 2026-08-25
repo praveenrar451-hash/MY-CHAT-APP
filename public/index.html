@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Private Chat</title>
     <script src="/socket.io/socket.io.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background-color: #0b141a; color: #e9edef; display: flex; height: 100vh; justify-content: center; align-items: center; }
@@ -47,19 +46,10 @@
         .icon-btn.recording { color: #f44336; animation: blink 1s infinite; }
         @keyframes blink { 50% { opacity: 0.5; } }
         .send-btn { padding: 10px 18px; background: #00a884; border: none; color: #fff; border-radius: 8px; font-weight: bold; cursor: pointer; }
-        
-        /* Call Modal */
-        #call-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 200; }
-        #video-container { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-        video { width: 280px; height: 210px; background: #000; border-radius: 8px; object-fit: cover; }
-        .call-actions { margin-top: 20px; display: flex; gap: 15px; }
-        .btn-call-end { background: #ea4335; color: #fff; border: none; padding: 12px 24px; border-radius: 25px; cursor: pointer; font-weight: bold; }
-        .btn-call-accept { background: #34a853; color: #fff; border: none; padding: 12px 24px; border-radius: 25px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <!-- Login Modal -->
     <div id="login-modal">
         <div class="login-box">
             <h2>Private Chat</h2>
@@ -69,7 +59,6 @@
         </div>
     </div>
 
-    <!-- Main Container -->
     <div id="app-container">
         <div id="sidebar">
             <div class="sidebar-header" id="my-profile">Contacts</div>
@@ -80,10 +69,6 @@
                 <div class="user-info">
                     <span id="chat-title" style="font-weight: bold;">Select a Contact</span>
                     <span id="chat-subtitle" class="status"></span>
-                </div>
-                <div class="call-btn-group" id="call-buttons" style="display: none;">
-                    <button class="call-btn" onclick="startCall(false)">📞</button>
-                    <button class="call-btn" onclick="startCall(true)">📹</button>
                 </div>
             </div>
             <div id="message-container"></div>
@@ -99,19 +84,6 @@
         </div>
     </div>
 
-    <!-- Call Modal UI -->
-    <div id="call-modal">
-        <h3 id="call-status-title" style="color: #fff; margin-bottom: 15px;">Calling...</h3>
-        <div id="video-container">
-            <video id="local-video" autoplay muted playsinline></video>
-            <video id="remote-video" autoplay playsinline></video>
-        </div>
-        <div class="call-actions">
-            <button id="accept-call-btn" class="btn-call-accept" style="display: none;" onclick="acceptIncomingCall()">Answer</button>
-            <button class="btn-call-end" onclick="endCall()">Hang Up</button>
-        </div>
-    </div>
-
     <script>
         const socket = io();
         let currentUser = '';
@@ -119,15 +91,9 @@
         let contactsData = { contacts: [], online: [], lastSeen: {} };
         let typingTimeout;
         
-        // Voice Recording Vars
         let mediaRecorder;
         let audioChunks = [];
         let isRecording = false;
-
-        // Calling Vars
-        let peer;
-        let localStream;
-        let incomingCallData = null;
 
         function getDeviceTime() {
             const d = new Date();
@@ -200,7 +166,6 @@
         function selectContact(user) {
             currentChatUser = user;
             document.getElementById('chat-title').innerText = user;
-            document.getElementById('call-buttons').style.display = 'flex';
             updateChatHeaderStatus();
             renderContacts();
 
@@ -243,7 +208,6 @@
             if (e.key === 'Enter') sendMessage();
         }
 
-        // Typing Indicator
         function sendTypingStatus(override) {
             if (!currentChatUser) return;
             const isTyping = override !== undefined ? override : document.getElementById('message-input').value.length > 0;
@@ -269,7 +233,6 @@
             }
         });
 
-        // Image Sharing
         function sendImage(e) {
             const file = e.target.files[0];
             if (!file || !currentChatUser) return;
@@ -287,7 +250,6 @@
             reader.readAsDataURL(file);
         }
 
-        // Voice Notes
         async function toggleVoiceRecord() {
             const btn = document.getElementById('voice-btn');
             if (!isRecording) {
@@ -326,7 +288,6 @@
             }
         }
 
-        // Receive Message & History
         socket.on('chat_message', (msg) => {
             if (
                 (msg.sender.toLowerCase() === currentUser.toLowerCase() && msg.receiver.toLowerCase() === currentChatUser.toLowerCase()) ||
@@ -365,81 +326,6 @@
             div.innerHTML = `${contentHTML}<div class="meta">${msg.time}${statusTicks}</div>`;
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
-        }
-
-        // Calling Functionality (Audio / Video WebRTC)
-        async function startCall(isVideo) {
-            document.getElementById('call-modal').style.display = 'flex';
-            document.getElementById('call-status-title').innerText = 'Calling ' + currentChatUser + '...';
-            document.getElementById('accept-call-btn').style.display = 'none';
-
-            try {
-                localStream = await navigator.mediaDevices.getUserMedia({ video: isVideo, audio: true });
-                document.getElementById('local-video').srcObject = localStream;
-
-                peer = new SimplePeer({ initiator: true, trickle: false, stream: localStream });
-
-                peer.on('signal', data => {
-                    socket.emit('call_user', { userToCall: currentChatUser, signalData: data, from: currentUser, isVideo });
-                });
-
-                peer.on('stream', stream => {
-                    document.getElementById('remote-video').srcObject = stream;
-                });
-            } catch (err) {
-                alert('Camera/Mic permission needed!');
-                endCall();
-            }
-        }
-
-        socket.on('incoming_call', ({ signal, from, isVideo }) => {
-            incomingCallData = { signal, from, isVideo };
-            document.getElementById('call-modal').style.display = 'flex';
-            document.getElementById('call-status-title').innerText = 'Incoming Call from ' + from;
-            document.getElementById('accept-call-btn').style.display = 'inline-block';
-        });
-
-        async function acceptIncomingCall() {
-            document.getElementById('accept-call-btn').style.display = 'none';
-            document.getElementById('call-status-title').innerText = 'Connected';
-
-            try {
-                localStream = await navigator.mediaDevices.getUserMedia({ video: incomingCallData.isVideo, audio: true });
-                document.getElementById('local-video').srcObject = localStream;
-
-                peer = new SimplePeer({ initiator: false, trickle: false, stream: localStream });
-
-                peer.on('signal', data => {
-                    socket.emit('answer_call', { signal: data, to: incomingCallData.from });
-                });
-
-                peer.on('stream', stream => {
-                    document.getElementById('remote-video').srcObject = stream;
-                });
-
-                peer.signal(incomingCallData.signal);
-            } catch (err) {
-                alert('Camera/Mic permission required!');
-                endCall();
-            }
-        }
-
-        socket.on('call_accepted', signal => {
-            document.getElementById('call-status-title').innerText = 'Connected';
-            if (peer) peer.signal(signal);
-        });
-
-        socket.on('call_ended', () => { endCallUI(); });
-
-        function endCall() {
-            if (currentChatUser) socket.emit('end_call', { to: currentChatUser });
-            endCallUI();
-        }
-
-        function endCallUI() {
-            if (peer) peer.destroy();
-            if (localStream) localStream.getTracks().forEach(track => track.stop());
-            document.getElementById('call-modal').style.display = 'none';
         }
     </script>
 </body>
