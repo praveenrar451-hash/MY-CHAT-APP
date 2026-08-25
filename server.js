@@ -1,160 +1,163 @@
 const express = require('express');
 const http = require('http');
-const { Server } = require('socket.io');
+const socketIo = require('socket.io');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-    maxHttpBufferSize: 1e8 // 100MB for image/audio transfers
+const io = socketIo(server);
+
+const db = new sqlite3.Database('./database.db');
+
+db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender TEXT,
+        receiver TEXT,
+        text TEXT,
+        type TEXT,
+        time TEXT,
+        status TEXT
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS last_seen (
+        username TEXT PRIMARY KEY,
+        time TEXT
+    )`);
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-const users = new Map(); // socket.id -> username
-const userLastSeen = new Map(); // username -> timestamp string
-let chatHistory = []; // All messages
-
-function getFormattedTime() {
-    const d = new Date();
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
+let users = {};
+let lastSeenMap = {};
 
 io.on('connection', (socket) => {
 
     socket.on('register_user', (username) => {
-        users.set(socket.id, username);
-        userLastSeen.delete(username.toLowerCase());
-        broadcastUserList();
+        if (!username) return;
+        const normalized = username.trim().toLowerCase();
+        socket.username = username.trim();
+        users[normalized] = socket.id;
+
+        db.all("SELECT username, time FROM last_seen", [], (err, rows) => {
+            if (!err && rows) {
+                rows.forEach(r => {
+                    lastSeenMap[r.username.toLowerCase()] = r.time;
+                });
+            }
+            io.emit('contacts_update', {
+                contacts: Object.keys(users),
+                online: Object.keys(users),
+                lastSeen: lastSeenMap
+            });
+        });
     });
 
     socket.on('load_private_chat', ({ user1, user2 }) => {
-        chatHistory.forEach(msg => {
-            if (msg.sender.toLowerCase() === user2.toLowerCase() && msg.receiver.toLowerCase() === user1.toLowerCase()) {
-                msg.status = 'read';
+        if (!user1 || !user2) return;
+        const query = `
+            SELECT * FROM messages 
+            WHERE (LOWER(sender) = LOWER(?) AND LOWER(receiver) = LOWER(?))
+               OR (LOWER(sender) = LOWER(?) AND LOWER(receiver) = LOWER(?))
+            ORDER BY id ASC
+        `;
+        db.all(query, [user1, user2, user2, user1], (err, rows) => {
+            if (!err) {
+                socket.emit('load_history', rows || []);
             }
         });
-
-        for (let [id, name] of users.entries()) {
-            if (name.toLowerCase() === user2.toLowerCase()) {
-                io.to(id).emit('messages_read_update', { by: user1 });
-            }
-        }
-
-        const filteredHistory = chatHistory.filter(msg => 
-            (msg.sender.toLowerCase() === user1.toLowerCase() && msg.receiver.toLowerCase() === user2.toLowerCase()) ||
-            (msg.sender.toLowerCase() === user2.toLowerCase() && msg.receiver.toLowerCase() === user1.toLowerCase())
-        );
-        
-        // Send only last 50 messages to keep it lightning fast
-        const recentHistory = filteredHistory.slice(-50);
-        socket.emit('load_history', recentHistory);
     });
 
     socket.on('private_message', (data) => {
-        data.id = Date.now() + Math.random().toString(36).substr(2, 5);
-        data.status = 'sent';
-        data.time = getFormattedTime();
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const receiverSocketId = users[data.receiver.trim().toLowerCase()];
+        const status = receiverSocketId ? 'delivered' : 'sent';
 
-        let recipientSocketId = null;
-        for (let [id, name] of users.entries()) {
-            if (name.toLowerCase() === data.receiver.toLowerCase()) {
-                recipientSocketId = id;
-                data.status = 'delivered';
-                break;
+        const stmt = db.prepare(`INSERT INTO messages (sender, receiver, text, type, time, status) VALUES (?, ?, ?, ?, ?, ?)`);
+        stmt.run(data.sender, data.receiver, data.text, data.type, timeStr, status, function(err) {
+            if (err) return;
+            const msgObj = {
+                id: this.lastID,
+                sender: data.sender,
+                receiver: data.receiver,
+                text: data.text,
+                type: data.type,
+                time: timeStr,
+                status: status
+            };
+
+            socket.emit('chat_message', msgObj);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit('chat_message', msgObj);
             }
-        }
-
-        chatHistory.push(data);
-        
-        // Prevent memory overflow by keeping maximum last 2000 global messages
-        if (chatHistory.length > 2000) {
-            chatHistory.shift();
-        }
-
-        if (recipientSocketId) {
-            io.to(recipientSocketId).emit('chat_message', data);
-        }
-        
-        socket.emit('chat_message', data);
+        });
+        stmt.finalize();
     });
 
     socket.on('mark_read', ({ sender, receiver }) => {
-        chatHistory.forEach(msg => {
-            if (msg.sender.toLowerCase() === sender.toLowerCase() && msg.receiver.toLowerCase() === receiver.toLowerCase()) {
-                msg.status = 'read';
+        db.run(`UPDATE messages SET status = 'read' WHERE LOWER(sender) = LOWER(?) AND LOWER(receiver) = LOWER(?)`, [sender, receiver], () => {
+            const senderSocketId = users[sender.trim().toLowerCase()];
+            if (senderSocketId) {
+                io.to(senderSocketId).emit('messages_read_update', { by: receiver });
             }
         });
-        for (let [id, name] of users.entries()) {
-            if (name.toLowerCase() === sender.toLowerCase()) {
-                io.to(id).emit('messages_read_update', { by: receiver });
-            }
-        }
     });
 
     socket.on('typing', ({ receiver, isTyping, sender }) => {
-        for (let [id, name] of users.entries()) {
-            if (name.toLowerCase() === receiver.toLowerCase()) {
-                io.to(id).emit('display_typing', { sender, isTyping });
-            }
+        const receiverSocketId = users[receiver.trim().toLowerCase()];
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('display_typing', { sender, isTyping });
         }
     });
 
     socket.on('call_user', ({ userToCall, signalData, from, isVideo }) => {
-        for (let [id, name] of users.entries()) {
-            if (name.toLowerCase() === userToCall.toLowerCase()) {
-                io.to(id).emit('incoming_call', { from, signal: signalData, isVideo });
-            }
+        const receiverSocketId = users[userToCall.trim().toLowerCase()];
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('incoming_call', { signal: signalData, from, isVideo });
         }
     });
 
-    socket.on('answer_call', ({ signal, to }) => {
-        for (let [id, name] of users.entries()) {
-            if (name.toLowerCase() === to.toLowerCase()) {
-                io.to(id).emit('call_accepted', signal);
-            }
+    socket.on('answer_call', (data) => {
+        const receiverSocketId = users[data.to.trim().toLowerCase()];
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('call_accepted', data.signal);
         }
     });
 
     socket.on('ice_candidate', ({ candidate, to }) => {
-        for (let [id, name] of users.entries()) {
-            if (name.toLowerCase() === to.toLowerCase()) {
-                io.to(id).emit('ice_candidate', candidate);
-            }
+        const receiverSocketId = users[to.trim().toLowerCase()];
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('ice_candidate', candidate);
         }
     });
 
     socket.on('end_call', ({ to }) => {
-        for (let [id, name] of users.entries()) {
-            if (name.toLowerCase() === to.toLowerCase()) {
-                io.to(id).emit('call_ended');
-            }
+        const receiverSocketId = users[to.trim().toLowerCase()];
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('call_ended');
         }
     });
 
     socket.on('disconnect', () => {
-        const username = users.get(socket.id);
-        if (username) {
-            userLastSeen.set(username.toLowerCase(), getFormattedTime());
-            users.delete(socket.id);
+        if (socket.username) {
+            const normalized = socket.username.toLowerCase();
+            delete users[normalized];
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            db.run(`INSERT OR REPLACE INTO last_seen (username, time) VALUES (?, ?)`, [normalized, timeStr], () => {
+                lastSeenMap[normalized] = timeStr;
+                io.emit('contacts_update', {
+                    contacts: Object.keys(users),
+                    online: Object.keys(users),
+                    lastSeen: lastSeenMap
+                });
+            });
         }
-        broadcastUserList();
     });
-
-    function broadcastUserList() {
-        const activeUsers = Array.from(new Set(users.values()));
-        const allKnownUsers = Array.from(new Set([
-            ...activeUsers,
-            ...chatHistory.map(m => m.sender),
-            ...chatHistory.map(m => m.receiver)
-        ]));
-        
-        const lastSeenObj = Object.fromEntries(userLastSeen);
-        io.emit('contacts_update', { contacts: allKnownUsers, online: activeUsers, lastSeen: lastSeenObj });
-    }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
