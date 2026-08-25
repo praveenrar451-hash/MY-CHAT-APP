@@ -7,54 +7,46 @@
     <script src="/socket.io/socket.io.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { background-color: #0b141a; color: #e9edef; display: flex; height: 100vh; justify-content: center; align-items: center; }
-        
+        body { background-color: #121212; color: #e0e0e0; display: flex; height: 100vh; justify-content: center; align-items: center; }
         #login-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 100; }
-        .login-box { background: #111b21; padding: 25px; border-radius: 12px; width: 320px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-        .login-box h2 { margin-bottom: 15px; color: #00a884; }
-        .login-box input { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #222d34; background: #202c33; color: #fff; border-radius: 6px; outline: none; }
-        .login-box button { width: 100%; padding: 10px; margin-top: 10px; background: #00a884; border: none; color: white; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .login-box { background: #1e1e1e; padding: 25px; border-radius: 12px; width: 320px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .login-box h2 { margin-bottom: 15px; color: #0084ff; }
+        .login-box input { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #333; background: #2a2a2a; color: #fff; border-radius: 6px; outline: none; }
+        .login-box button { width: 100%; padding: 10px; margin-top: 10px; background: #0084ff; border: none; color: white; border-radius: 6px; font-weight: bold; cursor: pointer; }
         
-        #app-container { display: flex; width: 100%; height: 100vh; background: #0b141a; }
-        #sidebar { width: 300px; background: #111b21; border-right: 1px solid #222d34; display: flex; flex-direction: column; }
-        .sidebar-header { padding: 15px; background: #202c33; font-weight: bold; color: #00a884; border-bottom: 1px solid #222d34; }
+        #app-container { display: flex; width: 100%; height: 100vh; background: #1e1e1e; }
+        #sidebar { width: 300px; background: #181818; border-right: 1px solid #2a2a2a; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 15px; background: #202020; font-weight: bold; color: #0084ff; border-bottom: 1px solid #2a2a2a; }
         #contact-list { flex: 1; overflow-y: auto; }
-        .contact-item { padding: 12px 15px; border-bottom: 1px solid #222d34; cursor: pointer; display: flex; flex-direction: column; }
-        .contact-item:hover, .contact-item.active { background: #2a3942; }
-        .contact-name { font-weight: bold; color: #e9edef; }
-        .contact-status { font-size: 0.8em; color: #8696a0; margin-top: 3px; }
-        .contact-status.online { color: #00a884; }
+        .contact-item { padding: 12px 15px; border-bottom: 1px solid #252525; cursor: pointer; display: flex; flex-direction: column; }
+        .contact-item:hover, .contact-item.active { background: #2a2a2a; }
+        .contact-name { font-weight: bold; }
+        .contact-status { font-size: 0.8em; color: #888; margin-top: 3px; }
+        .contact-status.online { color: #00e676; }
         
-        #chat-area { flex: 1; display: flex; flex-direction: column; background: #0b141a; }
-        .chat-header { padding: 12px 15px; background: #202c33; border-bottom: 1px solid #222d34; display: flex; align-items: center; justify-content: space-between; }
+        #chat-area { flex: 1; display: flex; flex-direction: column; background: #121212; }
+        .chat-header { padding: 15px; background: #1e1e1e; border-bottom: 1px solid #2a2a2a; display: flex; align-items: center; justify-content: space-between; }
         .chat-header .user-info { display: flex; flex-direction: column; }
-        .chat-header .status { font-size: 0.8em; color: #8696a0; }
-        .call-btn-group { display: flex; gap: 10px; }
-        .call-btn { background: #2a3942; border: none; color: #00a884; font-size: 1.2em; padding: 6px 12px; border-radius: 50%; cursor: pointer; }
+        .chat-header .status { font-size: 0.8em; color: #888; }
         
         #message-container { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-        .message { max-width: 65%; padding: 8px 12px; border-radius: 8px; font-size: 0.95em; position: relative; word-wrap: break-word; }
-        .message.sent { background: #005c4b; color: #e9edef; align-self: flex-end; border-top-right-radius: 0; }
-        .message.received { background: #202c33; color: #e9edef; align-self: flex-start; border-top-left-radius: 0; }
-        .message img { max-width: 100%; border-radius: 6px; margin-top: 5px; }
-        .message audio { max-width: 100%; margin-top: 5px; }
-        .message .meta { font-size: 0.7em; opacity: 0.7; margin-top: 4px; text-align: right; color: #8696a0; }
+        .message { max-width: 65%; padding: 10px 14px; border-radius: 12px; font-size: 0.95em; position: relative; word-wrap: break-word; }
+        .message.sent { background: #0084ff; color: #fff; align-self: flex-end; border-bottom-right-radius: 2px; }
+        .message.received { background: #2a2a2a; color: #e0e0e0; align-self: flex-start; border-bottom-left-radius: 2px; }
+        .message .meta { font-size: 0.7em; opacity: 0.7; margin-top: 4px; text-align: right; }
         
-        .chat-input-container { padding: 10px; background: #202c33; display: flex; gap: 8px; align-items: center; border-top: 1px solid #222d34; }
-        .chat-input-container input[type="text"] { flex: 1; padding: 10px 15px; background: #2a3942; border: none; color: #fff; border-radius: 8px; outline: none; }
-        .icon-btn { background: none; border: none; font-size: 1.3em; color: #8696a0; cursor: pointer; padding: 5px; }
-        .icon-btn.recording { color: #f44336; animation: blink 1s infinite; }
-        @keyframes blink { 50% { opacity: 0.5; } }
-        .send-btn { padding: 10px 18px; background: #00a884; border: none; color: #fff; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .chat-input-container { padding: 12px; background: #1e1e1e; display: flex; gap: 10px; border-top: 1px solid #2a2a2a; }
+        .chat-input-container input { flex: 1; padding: 10px; background: #2a2a2a; border: 1px solid #333; color: #fff; border-radius: 20px; outline: none; }
+        .chat-input-container button { padding: 10px 20px; background: #0084ff; border: none; color: #fff; border-radius: 20px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
 
     <div id="login-modal">
         <div class="login-box">
-            <h2>Private Chat</h2>
+            <h2>Private Chat Login</h2>
             <input type="text" id="username-input" placeholder="Your Name">
-            <input type="password" id="password-input" placeholder="Password">
+            <input type="password" id="password-input" placeholder="Password (272009)">
             <button onclick="login()">Login</button>
         </div>
     </div>
@@ -73,13 +65,8 @@
             </div>
             <div id="message-container"></div>
             <div class="chat-input-container">
-                <button class="icon-btn" onclick="document.getElementById('image-input').click()">📷</button>
-                <input type="file" id="image-input" accept="image/*" style="display: none;" onchange="sendImage(event)">
-                
-                <button class="icon-btn" id="voice-btn" onclick="toggleVoiceRecord()">🎙️</button>
-                
-                <input type="text" id="message-input" placeholder="Type a message..." oninput="sendTypingStatus()" onkeypress="handleKeyPress(event)">
-                <button class="send-btn" onclick="sendMessage()">Send</button>
+                <input type="text" id="message-input" placeholder="Type a message..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()">Send</button>
             </div>
         </div>
     </div>
@@ -89,55 +76,47 @@
         let currentUser = '';
         let currentChatUser = '';
         let contactsData = { contacts: [], online: [], lastSeen: {} };
-        let typingTimeout;
-        
-        let mediaRecorder;
-        let audioChunks = [];
-        let isRecording = false;
-
-        function getDeviceTime() {
-            const d = new Date();
-            let hours = d.getHours();
-            let minutes = d.getMinutes();
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            hours = hours % 12;
-            hours = hours ? hours : 12;
-            minutes = minutes < 10 ? '0' + minutes : minutes;
-            const strHours = hours < 10 ? '0' + hours : hours;
-            return strHours + ':' + minutes + ' ' + ampm;
-        }
 
         function login() {
             const name = document.getElementById('username-input').value.trim();
             const pass = document.getElementById('password-input').value.trim();
 
-            if (!name) { alert('Please enter your name'); return; }
-            if (pass !== '272009') { alert('Wrong Password!'); return; }
+            if (!name) {
+                alert('Please enter your name');
+                return;
+            }
+            if (pass !== '272009') {
+                alert('Wrong Password!');
+                return;
+            }
 
             currentUser = name;
             document.getElementById('my-profile').innerText = 'Logged in as: ' + currentUser;
             document.getElementById('login-modal').style.display = 'none';
 
-            socket.emit('register_user', { username: currentUser, time: getDeviceTime() });
-
-            window.addEventListener('beforeunload', () => {
-                socket.emit('update_last_seen', { time: getDeviceTime() });
-            });
+            socket.emit('register_user', currentUser);
         }
 
         socket.on('contacts_update', (data) => {
             contactsData = data;
             renderContacts();
-            if (currentChatUser) updateChatHeaderStatus();
+            if (currentChatUser) {
+                updateChatHeaderStatus();
+            }
         });
 
         function renderContacts() {
             const listContainer = document.getElementById('contact-list');
             listContainer.innerHTML = '';
-            const allKnown = new Set([...contactsData.contacts, ...Object.keys(contactsData.lastSeen)]);
+
+            const allKnown = new Set([
+                ...contactsData.contacts,
+                ...Object.keys(contactsData.lastSeen)
+            ]);
 
             allKnown.forEach(user => {
                 if (user.toLowerCase() === currentUser.toLowerCase()) return;
+
                 const isOnline = contactsData.online.map(u => u.toLowerCase()).includes(user.toLowerCase());
                 const lastSeenTime = contactsData.lastSeen[user.toLowerCase()];
 
@@ -171,7 +150,6 @@
 
             document.getElementById('message-container').innerHTML = '';
             socket.emit('load_private_chat', { user1: currentUser, user2: currentChatUser });
-            socket.emit('mark_read', { sender: currentChatUser, receiver: currentUser });
         }
 
         function updateChatHeaderStatus() {
@@ -182,13 +160,13 @@
 
             if (isOnline) {
                 subtitle.innerText = 'Online';
-                subtitle.style.color = '#00a884';
+                subtitle.style.color = '#00e676';
             } else if (lastSeenTime) {
                 subtitle.innerText = 'Last seen at ' + lastSeenTime;
-                subtitle.style.color = '#8696a0';
+                subtitle.style.color = '#888';
             } else {
                 subtitle.innerText = 'Offline';
-                subtitle.style.color = '#8696a0';
+                subtitle.style.color = '#888';
             }
         }
 
@@ -197,95 +175,18 @@
             const text = input.value.trim();
             if (!text || !currentChatUser) return;
 
-            const msgTime = getDeviceTime();
-            socket.emit('private_message', { sender: currentUser, receiver: currentChatUser, text, type: 'text', time: msgTime });
-            socket.emit('update_last_seen', { time: msgTime });
+            socket.emit('private_message', {
+                sender: currentUser,
+                receiver: currentChatUser,
+                text: text,
+                type: 'text'
+            });
+
             input.value = '';
-            sendTypingStatus(false);
         }
 
         function handleKeyPress(e) {
             if (e.key === 'Enter') sendMessage();
-        }
-
-        function sendTypingStatus(override) {
-            if (!currentChatUser) return;
-            const isTyping = override !== undefined ? override : document.getElementById('message-input').value.length > 0;
-            socket.emit('typing', { receiver: currentChatUser, isTyping, sender: currentUser });
-            
-            clearTimeout(typingTimeout);
-            if (isTyping) {
-                typingTimeout = setTimeout(() => {
-                    socket.emit('typing', { receiver: currentChatUser, isTyping: false, sender: currentUser });
-                }, 3000);
-            }
-        }
-
-        socket.on('display_typing', ({ sender, isTyping }) => {
-            if (currentChatUser && sender.toLowerCase() === currentChatUser.toLowerCase()) {
-                const subtitle = document.getElementById('chat-subtitle');
-                if (isTyping) {
-                    subtitle.innerText = 'typing...';
-                    subtitle.style.color = '#00a884';
-                } else {
-                    updateChatHeaderStatus();
-                }
-            }
-        });
-
-        function sendImage(e) {
-            const file = e.target.files[0];
-            if (!file || !currentChatUser) return;
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                const msgTime = getDeviceTime();
-                socket.emit('private_message', {
-                    sender: currentUser,
-                    receiver: currentChatUser,
-                    type: 'image',
-                    mediaUrl: evt.target.result,
-                    time: msgTime
-                });
-            };
-            reader.readAsDataURL(file);
-        }
-
-        async function toggleVoiceRecord() {
-            const btn = document.getElementById('voice-btn');
-            if (!isRecording) {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    mediaRecorder = new MediaRecorder(stream);
-                    audioChunks = [];
-                    
-                    mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
-                    mediaRecorder.onstop = () => {
-                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                            const msgTime = getDeviceTime();
-                            socket.emit('private_message', {
-                                sender: currentUser,
-                                receiver: currentChatUser,
-                                type: 'audio',
-                                mediaUrl: reader.result,
-                                time: msgTime
-                            });
-                        };
-                        reader.readAsDataURL(audioBlob);
-                    };
-
-                    mediaRecorder.start();
-                    isRecording = true;
-                    btn.classList.add('recording');
-                } catch(err) {
-                    alert('Mic permission denied!');
-                }
-            } else {
-                mediaRecorder.stop();
-                isRecording = false;
-                btn.classList.remove('recording');
-            }
         }
 
         socket.on('chat_message', (msg) => {
@@ -294,9 +195,6 @@
                 (msg.sender.toLowerCase() === currentChatUser.toLowerCase() && msg.receiver.toLowerCase() === currentUser.toLowerCase())
             ) {
                 appendMessage(msg);
-                if (msg.sender.toLowerCase() === currentChatUser.toLowerCase()) {
-                    socket.emit('mark_read', { sender: currentChatUser, receiver: currentUser });
-                }
             }
         });
 
@@ -312,18 +210,10 @@
             const isSent = msg.sender.toLowerCase() === currentUser.toLowerCase();
             
             div.className = 'message ' + (isSent ? 'sent' : 'received');
-            
-            let contentHTML = '';
-            if (msg.type === 'image') {
-                contentHTML = `<img src="${msg.mediaUrl}">`;
-            } else if (msg.type === 'audio') {
-                contentHTML = `<audio controls src="${msg.mediaUrl}"></audio>`;
-            } else {
-                contentHTML = `<div>${msg.text}</div>`;
-            }
-
-            let statusTicks = isSent ? (msg.status === 'read' ? ' ✔✔' : ' ✔') : '';
-            div.innerHTML = `${contentHTML}<div class="meta">${msg.time}${statusTicks}</div>`;
+            div.innerHTML = `
+                <div>${msg.text}</div>
+                <div class="meta">${msg.time}</div>
+            `;
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
         }
