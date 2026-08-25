@@ -32,6 +32,16 @@ app.use(express.static(path.join(__dirname, 'public')));
 let users = {};
 let lastSeenMap = {};
 
+// Indian Standard Time (IST) Fetch Function
+function getISTTime() {
+    return new Date().toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+    });
+}
+
 io.on('connection', (socket) => {
 
     socket.on('register_user', (username) => {
@@ -70,7 +80,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('private_message', (data) => {
-        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const timeStr = getISTTime();
         const receiverSocketId = users[data.receiver.trim().toLowerCase()];
         const status = receiverSocketId ? 'delivered' : 'sent';
 
@@ -143,7 +153,7 @@ io.on('connection', (socket) => {
         if (socket.username) {
             const normalized = socket.username.toLowerCase();
             delete users[normalized];
-            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const timeStr = getISTTime();
             
             db.run(`INSERT OR REPLACE INTO last_seen (username, time) VALUES (?, ?)`, [normalized, timeStr], () => {
                 lastSeenMap[normalized] = timeStr;
