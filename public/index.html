@@ -5,9 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Private Chat</title>
     <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background-color: #0b141a; color: #e9edef; display: flex; height: 100vh; justify-content: center; align-items: center; }
+        
         #login-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 100; }
         .login-box { background: #111b21; padding: 25px; border-radius: 12px; width: 320px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         .login-box h2 { margin-bottom: 15px; color: #00a884; }
@@ -25,32 +27,49 @@
         .contact-status.online { color: #00a884; }
         
         #chat-area { flex: 1; display: flex; flex-direction: column; background: #0b141a; }
-        .chat-header { padding: 15px; background: #202c33; border-bottom: 1px solid #222d34; display: flex; align-items: center; justify-content: space-between; }
+        .chat-header { padding: 12px 15px; background: #202c33; border-bottom: 1px solid #222d34; display: flex; align-items: center; justify-content: space-between; }
         .chat-header .user-info { display: flex; flex-direction: column; }
         .chat-header .status { font-size: 0.8em; color: #8696a0; }
+        .call-btn-group { display: flex; gap: 10px; }
+        .call-btn { background: #2a3942; border: none; color: #00a884; font-size: 1.2em; padding: 6px 12px; border-radius: 50%; cursor: pointer; }
         
         #message-container { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
         .message { max-width: 65%; padding: 8px 12px; border-radius: 8px; font-size: 0.95em; position: relative; word-wrap: break-word; }
         .message.sent { background: #005c4b; color: #e9edef; align-self: flex-end; border-top-right-radius: 0; }
         .message.received { background: #202c33; color: #e9edef; align-self: flex-start; border-top-left-radius: 0; }
+        .message img { max-width: 100%; border-radius: 6px; margin-top: 5px; }
+        .message audio { max-width: 100%; margin-top: 5px; }
         .message .meta { font-size: 0.7em; opacity: 0.7; margin-top: 4px; text-align: right; color: #8696a0; }
         
-        .chat-input-container { padding: 12px; background: #202c33; display: flex; gap: 10px; border-top: 1px solid #222d34; }
-        .chat-input-container input { flex: 1; padding: 10px 15px; background: #2a3942; border: none; color: #fff; border-radius: 8px; outline: none; }
-        .chat-input-container button { padding: 10px 20px; background: #00a884; border: none; color: #fff; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .chat-input-container { padding: 10px; background: #202c33; display: flex; gap: 8px; align-items: center; border-top: 1px solid #222d34; }
+        .chat-input-container input[type="text"] { flex: 1; padding: 10px 15px; background: #2a3942; border: none; color: #fff; border-radius: 8px; outline: none; }
+        .icon-btn { background: none; border: none; font-size: 1.3em; color: #8696a0; cursor: pointer; padding: 5px; }
+        .icon-btn.recording { color: #f44336; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+        .send-btn { padding: 10px 18px; background: #00a884; border: none; color: #fff; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        
+        /* Call Modal */
+        #call-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 200; }
+        #video-container { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        video { width: 280px; height: 210px; background: #000; border-radius: 8px; object-fit: cover; }
+        .call-actions { margin-top: 20px; display: flex; gap: 15px; }
+        .btn-call-end { background: #ea4335; color: #fff; border: none; padding: 12px 24px; border-radius: 25px; cursor: pointer; font-weight: bold; }
+        .btn-call-accept { background: #34a853; color: #fff; border: none; padding: 12px 24px; border-radius: 25px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
 
+    <!-- Login Modal -->
     <div id="login-modal">
         <div class="login-box">
             <h2>Private Chat</h2>
             <input type="text" id="username-input" placeholder="Your Name">
-            <input type="password" id="password-input" placeholder="Password (272009)">
+            <input type="password" id="password-input" placeholder="Password">
             <button onclick="login()">Login</button>
         </div>
     </div>
 
+    <!-- Main Container -->
     <div id="app-container">
         <div id="sidebar">
             <div class="sidebar-header" id="my-profile">Contacts</div>
@@ -62,12 +81,34 @@
                     <span id="chat-title" style="font-weight: bold;">Select a Contact</span>
                     <span id="chat-subtitle" class="status"></span>
                 </div>
+                <div class="call-btn-group" id="call-buttons" style="display: none;">
+                    <button class="call-btn" onclick="startCall(false)">📞</button>
+                    <button class="call-btn" onclick="startCall(true)">📹</button>
+                </div>
             </div>
             <div id="message-container"></div>
             <div class="chat-input-container">
-                <input type="text" id="message-input" placeholder="Type a message..." onkeypress="handleKeyPress(event)">
-                <button onclick="sendMessage()">Send</button>
+                <button class="icon-btn" onclick="document.getElementById('image-input').click()">📷</button>
+                <input type="file" id="image-input" accept="image/*" style="display: none;" onchange="sendImage(event)">
+                
+                <button class="icon-btn" id="voice-btn" onclick="toggleVoiceRecord()">🎙️</button>
+                
+                <input type="text" id="message-input" placeholder="Type a message..." oninput="sendTypingStatus()" onkeypress="handleKeyPress(event)">
+                <button class="send-btn" onclick="sendMessage()">Send</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Call Modal UI -->
+    <div id="call-modal">
+        <h3 id="call-status-title" style="color: #fff; margin-bottom: 15px;">Calling...</h3>
+        <div id="video-container">
+            <video id="local-video" autoplay muted playsinline></video>
+            <video id="remote-video" autoplay playsinline></video>
+        </div>
+        <div class="call-actions">
+            <button id="accept-call-btn" class="btn-call-accept" style="display: none;" onclick="acceptIncomingCall()">Answer</button>
+            <button class="btn-call-end" onclick="endCall()">Hang Up</button>
         </div>
     </div>
 
@@ -76,6 +117,17 @@
         let currentUser = '';
         let currentChatUser = '';
         let contactsData = { contacts: [], online: [], lastSeen: {} };
+        let typingTimeout;
+        
+        // Voice Recording Vars
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+
+        // Calling Vars
+        let peer;
+        let localStream;
+        let incomingCallData = null;
 
         function getDeviceTime() {
             const d = new Date();
@@ -83,7 +135,7 @@
             let minutes = d.getMinutes();
             const ampm = hours >= 12 ? 'PM' : 'AM';
             hours = hours % 12;
-            hours = hours ? hours : 12; // 0 ko 12 banana
+            hours = hours ? hours : 12;
             minutes = minutes < 10 ? '0' + minutes : minutes;
             const strHours = hours < 10 ? '0' + hours : hours;
             return strHours + ':' + minutes + ' ' + ampm;
@@ -93,23 +145,15 @@
             const name = document.getElementById('username-input').value.trim();
             const pass = document.getElementById('password-input').value.trim();
 
-            if (!name) {
-                alert('Please enter your name');
-                return;
-            }
-            if (pass !== '272009') {
-                alert('Wrong Password!');
-                return;
-            }
+            if (!name) { alert('Please enter your name'); return; }
+            if (pass !== '272009') { alert('Wrong Password!'); return; }
 
             currentUser = name;
             document.getElementById('my-profile').innerText = 'Logged in as: ' + currentUser;
             document.getElementById('login-modal').style.display = 'none';
 
-            const currentTime = getDeviceTime();
-            socket.emit('register_user', { username: currentUser, time: currentTime });
+            socket.emit('register_user', { username: currentUser, time: getDeviceTime() });
 
-            // User disconnect/close hone se pehle last seen update karein
             window.addEventListener('beforeunload', () => {
                 socket.emit('update_last_seen', { time: getDeviceTime() });
             });
@@ -118,23 +162,16 @@
         socket.on('contacts_update', (data) => {
             contactsData = data;
             renderContacts();
-            if (currentChatUser) {
-                updateChatHeaderStatus();
-            }
+            if (currentChatUser) updateChatHeaderStatus();
         });
 
         function renderContacts() {
             const listContainer = document.getElementById('contact-list');
             listContainer.innerHTML = '';
-
-            const allKnown = new Set([
-                ...contactsData.contacts,
-                ...Object.keys(contactsData.lastSeen)
-            ]);
+            const allKnown = new Set([...contactsData.contacts, ...Object.keys(contactsData.lastSeen)]);
 
             allKnown.forEach(user => {
                 if (user.toLowerCase() === currentUser.toLowerCase()) return;
-
                 const isOnline = contactsData.online.map(u => u.toLowerCase()).includes(user.toLowerCase());
                 const lastSeenTime = contactsData.lastSeen[user.toLowerCase()];
 
@@ -163,11 +200,13 @@
         function selectContact(user) {
             currentChatUser = user;
             document.getElementById('chat-title').innerText = user;
+            document.getElementById('call-buttons').style.display = 'flex';
             updateChatHeaderStatus();
             renderContacts();
 
             document.getElementById('message-container').innerHTML = '';
             socket.emit('load_private_chat', { user1: currentUser, user2: currentChatUser });
+            socket.emit('mark_read', { sender: currentChatUser, receiver: currentUser });
         }
 
         function updateChatHeaderStatus() {
@@ -194,31 +233,109 @@
             if (!text || !currentChatUser) return;
 
             const msgTime = getDeviceTime();
-
-            socket.emit('private_message', {
-                sender: currentUser,
-                receiver: currentChatUser,
-                text: text,
-                type: 'text',
-                time: msgTime
-            });
-
-            // Message bhejte time last seen update kar lo
+            socket.emit('private_message', { sender: currentUser, receiver: currentChatUser, text, type: 'text', time: msgTime });
             socket.emit('update_last_seen', { time: msgTime });
-
             input.value = '';
+            sendTypingStatus(false);
         }
 
         function handleKeyPress(e) {
             if (e.key === 'Enter') sendMessage();
         }
 
+        // Typing Indicator
+        function sendTypingStatus(override) {
+            if (!currentChatUser) return;
+            const isTyping = override !== undefined ? override : document.getElementById('message-input').value.length > 0;
+            socket.emit('typing', { receiver: currentChatUser, isTyping, sender: currentUser });
+            
+            clearTimeout(typingTimeout);
+            if (isTyping) {
+                typingTimeout = setTimeout(() => {
+                    socket.emit('typing', { receiver: currentChatUser, isTyping: false, sender: currentUser });
+                }, 3000);
+            }
+        }
+
+        socket.on('display_typing', ({ sender, isTyping }) => {
+            if (currentChatUser && sender.toLowerCase() === currentChatUser.toLowerCase()) {
+                const subtitle = document.getElementById('chat-subtitle');
+                if (isTyping) {
+                    subtitle.innerText = 'typing...';
+                    subtitle.style.color = '#00a884';
+                } else {
+                    updateChatHeaderStatus();
+                }
+            }
+        });
+
+        // Image Sharing
+        function sendImage(e) {
+            const file = e.target.files[0];
+            if (!file || !currentChatUser) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const msgTime = getDeviceTime();
+                socket.emit('private_message', {
+                    sender: currentUser,
+                    receiver: currentChatUser,
+                    type: 'image',
+                    mediaUrl: evt.target.result,
+                    time: msgTime
+                });
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Voice Notes
+        async function toggleVoiceRecord() {
+            const btn = document.getElementById('voice-btn');
+            if (!isRecording) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+                    
+                    mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+                    mediaRecorder.onstop = () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                            const msgTime = getDeviceTime();
+                            socket.emit('private_message', {
+                                sender: currentUser,
+                                receiver: currentChatUser,
+                                type: 'audio',
+                                mediaUrl: reader.result,
+                                time: msgTime
+                            });
+                        };
+                        reader.readAsDataURL(audioBlob);
+                    };
+
+                    mediaRecorder.start();
+                    isRecording = true;
+                    btn.classList.add('recording');
+                } catch(err) {
+                    alert('Mic permission denied!');
+                }
+            } else {
+                mediaRecorder.stop();
+                isRecording = false;
+                btn.classList.remove('recording');
+            }
+        }
+
+        // Receive Message & History
         socket.on('chat_message', (msg) => {
             if (
                 (msg.sender.toLowerCase() === currentUser.toLowerCase() && msg.receiver.toLowerCase() === currentChatUser.toLowerCase()) ||
                 (msg.sender.toLowerCase() === currentChatUser.toLowerCase() && msg.receiver.toLowerCase() === currentUser.toLowerCase())
             ) {
                 appendMessage(msg);
+                if (msg.sender.toLowerCase() === currentChatUser.toLowerCase()) {
+                    socket.emit('mark_read', { sender: currentChatUser, receiver: currentUser });
+                }
             }
         });
 
@@ -234,12 +351,95 @@
             const isSent = msg.sender.toLowerCase() === currentUser.toLowerCase();
             
             div.className = 'message ' + (isSent ? 'sent' : 'received');
-            div.innerHTML = `
-                <div>${msg.text}</div>
-                <div class="meta">${msg.time}</div>
-            `;
+            
+            let contentHTML = '';
+            if (msg.type === 'image') {
+                contentHTML = `<img src="${msg.mediaUrl}">`;
+            } else if (msg.type === 'audio') {
+                contentHTML = `<audio controls src="${msg.mediaUrl}"></audio>`;
+            } else {
+                contentHTML = `<div>${msg.text}</div>`;
+            }
+
+            let statusTicks = isSent ? (msg.status === 'read' ? ' ✔✔' : ' ✔') : '';
+            div.innerHTML = `${contentHTML}<div class="meta">${msg.time}${statusTicks}</div>`;
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
+        }
+
+        // Calling Functionality (Audio / Video WebRTC)
+        async function startCall(isVideo) {
+            document.getElementById('call-modal').style.display = 'flex';
+            document.getElementById('call-status-title').innerText = 'Calling ' + currentChatUser + '...';
+            document.getElementById('accept-call-btn').style.display = 'none';
+
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: isVideo, audio: true });
+                document.getElementById('local-video').srcObject = localStream;
+
+                peer = new SimplePeer({ initiator: true, trickle: false, stream: localStream });
+
+                peer.on('signal', data => {
+                    socket.emit('call_user', { userToCall: currentChatUser, signalData: data, from: currentUser, isVideo });
+                });
+
+                peer.on('stream', stream => {
+                    document.getElementById('remote-video').srcObject = stream;
+                });
+            } catch (err) {
+                alert('Camera/Mic permission needed!');
+                endCall();
+            }
+        }
+
+        socket.on('incoming_call', ({ signal, from, isVideo }) => {
+            incomingCallData = { signal, from, isVideo };
+            document.getElementById('call-modal').style.display = 'flex';
+            document.getElementById('call-status-title').innerText = 'Incoming Call from ' + from;
+            document.getElementById('accept-call-btn').style.display = 'inline-block';
+        });
+
+        async function acceptIncomingCall() {
+            document.getElementById('accept-call-btn').style.display = 'none';
+            document.getElementById('call-status-title').innerText = 'Connected';
+
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: incomingCallData.isVideo, audio: true });
+                document.getElementById('local-video').srcObject = localStream;
+
+                peer = new SimplePeer({ initiator: false, trickle: false, stream: localStream });
+
+                peer.on('signal', data => {
+                    socket.emit('answer_call', { signal: data, to: incomingCallData.from });
+                });
+
+                peer.on('stream', stream => {
+                    document.getElementById('remote-video').srcObject = stream;
+                });
+
+                peer.signal(incomingCallData.signal);
+            } catch (err) {
+                alert('Camera/Mic permission required!');
+                endCall();
+            }
+        }
+
+        socket.on('call_accepted', signal => {
+            document.getElementById('call-status-title').innerText = 'Connected';
+            if (peer) peer.signal(signal);
+        });
+
+        socket.on('call_ended', () => { endCallUI(); });
+
+        function endCall() {
+            if (currentChatUser) socket.emit('end_call', { to: currentChatUser });
+            endCallUI();
+        }
+
+        function endCallUI() {
+            if (peer) peer.destroy();
+            if (localStream) localStream.getTracks().forEach(track => track.stop());
+            document.getElementById('call-modal').style.display = 'none';
         }
     </script>
 </body>
